@@ -1,0 +1,172 @@
+// connect to lab machine
+ssh pjacome@144.24.46.199
+
+// create directory 
+hdfs dfs -mkdir -p /user/pjacome/cough_metadata
+hdfs dfs -put coughvid_v3.csv /user/pjacome/cough_metadata
+
+hdfs dfs -mkdir -p /user/pjacome/expert_labels
+hdfs dfs -put filtered_expert_labels_coughvid_v3.csv /user/pjacome/expert_labels
+
+//Start Beeline
+Beeline
+
+// Use my database 
+Use Pjacome;
+
+//Create tanle cough_metadata
+DROP TABLE IF EXISTS cough_metadata;
+
+CREATE EXTERNAL TABLE cough_metadata (
+    recorded_time STRING,
+    cough_detected DOUBLE,
+    latitude DOUBLE,
+    longitude DOUBLE,
+    age INT,
+    gender STRING,
+    respiratory_condition STRING,
+    fever_muscle_pain STRING,
+    status STRING,
+    json_path STRING,
+    media_path STRING
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+LOCATION '/user/pjacome/cough_metadata'
+TBLPROPERTIES ('skip.header.line.count'='1');
+
+//Check table 
+SELECT * FROM cough_metadata LIMIT 10;
+
+//Create expert_labels table
+DROP TABLE IF EXISTS expert_labels;
+
+CREATE EXTERNAL TABLE expert_labels (
+    datetime STRING,
+    cough_detected DOUBLE,
+    latitude DOUBLE,
+    longitude DOUBLE,
+    age INT,
+    gender STRING,
+    respiratory_condition BOOLEAN,
+    fever_muscle_pain BOOLEAN,
+    status STRING,
+    file_name STRING,
+    audio_name STRING,
+
+    expert_labels_1_quality STRING,
+    expert_labels_1_cough_type STRING,
+    expert_labels_1_dyspnea BOOLEAN,
+    expert_labels_1_wheezing BOOLEAN,
+    expert_labels_1_stridor BOOLEAN,
+    expert_labels_1_choking BOOLEAN,
+    expert_labels_1_congestion BOOLEAN,
+    expert_labels_1_nothing BOOLEAN,
+    expert_labels_1_diagnosis STRING,
+    expert_labels_1_severity STRING,
+
+    expert_labels_2_quality STRING,
+    expert_labels_2_cough_type STRING,
+    expert_labels_2_dyspnea BOOLEAN,
+    expert_labels_2_wheezing BOOLEAN,
+    expert_labels_2_stridor BOOLEAN,
+    expert_labels_2_choking BOOLEAN,
+    expert_labels_2_congestion BOOLEAN,
+    expert_labels_2_nothing BOOLEAN,
+    expert_labels_2_diagnosis STRING,
+    expert_labels_2_severity STRING,
+
+    expert_labels_3_quality STRING,
+    expert_labels_3_cough_type STRING,
+    expert_labels_3_dyspnea BOOLEAN,
+    expert_labels_3_wheezing BOOLEAN,
+    expert_labels_3_stridor BOOLEAN,
+    expert_labels_3_choking BOOLEAN,
+    expert_labels_3_congestion BOOLEAN,
+    expert_labels_3_nothing BOOLEAN,
+    expert_labels_3_diagnosis STRING,
+    expert_labels_3_severity STRING,
+
+    expert_labels_4_quality STRING,
+    expert_labels_4_cough_type STRING,
+    expert_labels_4_dyspnea BOOLEAN,
+    expert_labels_4_wheezing BOOLEAN,
+    expert_labels_4_stridor BOOLEAN,
+    expert_labels_4_choking BOOLEAN,
+    expert_labels_4_congestion BOOLEAN,
+    expert_labels_4_nothing BOOLEAN,
+    expert_labels_4_diagnosis STRING,
+    expert_labels_4_severity STRING
+)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+WITH SERDEPROPERTIES (
+  "separatorChar" = ",",
+  "quoteChar" = "\""
+)
+STORED AS TEXTFILE
+LOCATION '/user/pjacome/expert_labels'
+TBLPROPERTIES ('skip.header.line.count'='1');
+
+// Check table 
+SELECT * FROM expert_labels LIMIT 10;
+
+//Result in image Report1 screenshot
+SELECT status, COUNT(*) FROM cough_metadata GROUP BY status;
+
+//Result in image Report2 screenshot
+SELECT expert_labels_1_diagnosis, COUNT(*) FROM expert_labels GROUP BY expert_labels_1_diagnosis;
+
+// Create join table 
+DROP TABLE IF EXISTS cough_enriched;
+
+CREATE TABLE cough_enriched AS
+SELECT
+    m.media_path AS uuid,
+    CAST(m.age AS INT) AS age,
+    UPPER(m.gender) AS gender,
+    CONCAT_WS(', ', CAST(m.latitude AS STRING), CAST(m.longitude AS STRING)) AS location,
+    UPPER(m.status) AS status,
+    m.cough_detected,
+    m.respiratory_condition,
+    m.fever_muscle_pain,
+    e.expert_labels_4_diagnosis AS expert_diagnosis,
+    e.expert_labels_4_severity AS expert_severity
+FROM cough_metadata m
+JOIN expert_labels e
+  ON m.media_path = e.audio_name;
+
+//Check table
+select * from cough_enriched LIMIT 10;
+
+// move file to HDSF 
+INSERT OVERWRITE DIRECTORY '/user/pjacome/cough_enriched_csv'
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+SELECT * FROM cough_enriched;
+
+//merges all output part files into one file called cough_enriched.csv 
+hdfs dfs -getmerge /user/pjacome/cough_enriched_csv cough_enriched.csv
+
+//Export header row
+INSERT OVERWRITE DIRECTORY '/user/pjacome/cough_enriched_csv_header'
+SELECT 'uuid,age,gender,latitude,longitude,status,cough_detected,respiratory_condition,fever_muscle_pain,expert_diagnosis,expert_severity ';
+
+//Export actual data
+INSERT OVERWRITE DIRECTORY '/user/pjacome/cough_enriched_csv_data'
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+SELECT * FROM cough_enriched;
+
+//# Create CSV file with header + data
+hdfs dfs -cat /user/pjacome/cough_enriched_csv_header/* > cough_enriched.csv
+hdfs dfs -cat /user/pjacome/cough_enriched_csv_data/* >> cough_enriched.csv
+
+//download the data to local PC
+$ scp pjacome@144.24.46.199:/home/pjacome/cough_enriched.csv .
+
+
+
+
