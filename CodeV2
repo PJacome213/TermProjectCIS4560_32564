@@ -2,11 +2,27 @@
 ssh pjacome@144.24.46.199
 
 // create directory 
-hdfs dfs -mkdir -p /user/pjacome/cough_metadata
-hdfs dfs -put coughvid_v3.csv /user/pjacome/cough_metadata
 
-hdfs dfs -mkdir -p /user/pjacome/expert_labels
-hdfs dfs -put filtered_expert_labels_coughvid_v3.csv /user/pjacome/expert_labels
+hdfs dfs -rm -r coughvid_output
+hdfs dfs -mkdir -p coughvid_output
+
+// verify directory
+hdfs dfs -ls
+
+//upload files
+
+wget https://github.com/PJacome213/TermProjectCIS4560_32564/raw/refs/heads/main/coughvid_v3.csv
+wget https://github.com/PJacome213/TermProjectCIS4560_32564/raw/refs/heads/main/filtered_expert_labels_coughvid_v3.csv
+wget https://github.com/PJacome213/TermProjectCIS4560_32564/raw/refs/heads/main/extracted_features_coughvid_v3.csv
+
+// put files on dir
+
+hdfs dfs -put coughvid_v3.csv coughvid_output
+hdfs dfs -put filtered_expert_labels_coughvid_v3.csv coughvid_output
+hdfs dfs -put extracted_features_coughvid_v3.csv coughvid_output
+
+//check files in dir.
+hdfs dfs -ls /user/pjacome/coughvid_output
 
 //Start Beeline
 Beeline
@@ -14,7 +30,7 @@ Beeline
 // Use my database 
 Use Pjacome;
 
-//Create tanle cough_metadata
+//Create table cough_metadata
 DROP TABLE IF EXISTS cough_metadata;
 
 CREATE EXTERNAL TABLE cough_metadata (
